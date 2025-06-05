@@ -13,7 +13,7 @@ DB_PARAMS = {
     "host": "localhost",
     "database": "demo_sqli",
     "user": "postgres",
-    "password": "123456",  # Change this to your PostgreSQL password
+    "password": "ducanh",  # Change this to your PostgreSQL password
     "port": "5432"
 }
 

