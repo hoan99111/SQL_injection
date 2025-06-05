@@ -12,7 +12,7 @@ def create_database():
     conn = psycopg2.connect(
         host="localhost",
         user="postgres",
-        password="ducanh",  # Change this to your PostgreSQL password
+        password="123456",  # Change this to your PostgreSQL password
         port="5432"
     )
     conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
@@ -38,7 +38,7 @@ def setup_tables():
         host="localhost",
         database="demo_sqli",
         user="postgres",
-        password="ducanh",  # Change this to your PostgreSQL password
+        password="123456",  # Change this to your PostgreSQL password
         port="5432"
     )
     cursor = conn.cursor()
